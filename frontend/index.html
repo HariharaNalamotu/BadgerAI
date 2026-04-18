@@ -1,68 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BadgerAI</title>
-  <link rel="stylesheet" href="style.css" />
-</head>
-<body>
-  <div id="app">
-    <!-- Header -->
-    <header>
-      <div class="header-inner">
-        <span class="logo">BadgerAI</span>
-        <div class="status-pill" id="statusPill">
-          <span class="dot" id="statusDot"></span>
-          <span id="statusText">Connecting…</span>
-        </div>
-      </div>
-    </header>
-
-    <!-- Search bar -->
-    <main>
-      <section class="search-section">
-        <div class="search-row">
-          <select id="librarySelect" title="Library">
-            <option value="">All libraries</option>
-          </select>
-          <input id="queryInput" type="text" placeholder="Ask anything…" autocomplete="off" />
-          <button id="searchBtn">Search</button>
-        </div>
-        <div class="options-row">
-          <label>
-            Mode:
-            <select id="modeSelect">
-              <option value="hybrid" selected>Hybrid</option>
-              <option value="vector">Vector</option>
-              <option value="keyword">Keyword</option>
-            </select>
-          </label>
-          <label>
-            Top-K:
-            <input id="topKInput" type="number" value="5" min="1" max="50" style="width:4rem" />
-          </label>
-          <label>
-            <input id="rerankCheck" type="checkbox" checked />
-            Rerank (bge-reranker-large)
-          </label>
-        </div>
-      </section>
-
-      <!-- Results -->
-      <section id="resultsSection" class="results-section hidden">
-        <div id="resultsHeader" class="results-header"></div>
-        <div id="resultsList"></div>
-      </section>
-
-      <!-- Empty state -->
-      <div id="emptyState" class="empty-state">
-        <p>Search across your indexed documentation libraries.</p>
-        <p class="hint">Start the RAG service first: <code>python rag_service/start.py</code></p>
-      </div>
-    </main>
-  </div>
-
-  <script src="app.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GETHELP — BadgerAI</title>
+    <style>* { margin: 0; padding: 0; box-sizing: border-box; } body { background: #0a0a0a; }</style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
 </html>

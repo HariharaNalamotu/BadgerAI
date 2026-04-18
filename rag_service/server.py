@@ -2,7 +2,10 @@
 from __future__ import annotations
 import logging
 import os
+import subprocess
+import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 import torch
@@ -83,6 +86,11 @@ class SearchRequest(BaseModel):
     bm25_weight: float = 0.40
 
 
+class IndexRequest(BaseModel):
+    library_name: str
+    url: str
+
+
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
 @app.get("/v1/health")
@@ -158,3 +166,37 @@ def get_library(library_name: str):
     if not lib:
         raise HTTPException(404, f"Library '{library_name}' not found")
     return lib
+
+
+def _find_binary() -> Path:
+    """Find the plshelp binary next to this package."""
+    root = Path(__file__).parent.parent
+    for name in ("plshelp.exe", "plshelp"):
+        p = root / "target" / "release" / name
+        if p.exists():
+            return p
+    raise FileNotFoundError(
+        "plshelp binary not found. Build it with: cargo build --release"
+    )
+
+
+@app.post("/v1/index", status_code=202)
+def index_library(req: IndexRequest):
+    """Start indexing a URL in the background via plshelp add."""
+    lib_name = req.library_name.strip()
+    url = req.url.strip()
+    if not lib_name or not url:
+        raise HTTPException(400, "library_name and url are required")
+
+    try:
+        binary = _find_binary()
+    except FileNotFoundError as e:
+        raise HTTPException(500, str(e))
+
+    subprocess.Popen(
+        [str(binary), "add", lib_name, url],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    logger.info("Started indexing '%s' from %s", lib_name, url)
+    return {"status": "started", "library_name": lib_name, "url": url}

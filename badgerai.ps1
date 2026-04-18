@@ -9,14 +9,15 @@
     start       Start the RAG service in the background
     stop        Stop the RAG service
     status      Show service health
-    ui          Open the frontend in your browser
+    ui          Start the Vite dev server and open the frontend
+    build       Build the React frontend for production
     <any>       Pass-through to plshelp.exe (index, query, show, …)
 
 .EXAMPLE
   .\badgerai.ps1 start
-  .\badgerai.ps1 query "how do I use async functions?"
-  .\badgerai.ps1 index https://docs.python.org
   .\badgerai.ps1 ui
+  .\badgerai.ps1 build
+  .\badgerai.ps1 query "how do I use async functions?"
 #>
 
 $ErrorActionPreference = "Stop"
@@ -32,7 +33,7 @@ $ServiceUrl  = "http://127.0.0.1:8765"
 
 function Test-ServiceRunning {
     try {
-        $r = Invoke-RestMethod -Uri "$ServiceUrl/v1/health" -TimeoutSec 2 -ErrorAction Stop
+        $null = Invoke-RestMethod -Uri "$ServiceUrl/v1/health" -TimeoutSec 2 -ErrorAction Stop
         return $true
     } catch {
         return $false
@@ -68,12 +69,12 @@ function Start-Service {
 
 function Stop-Service {
     if (Test-Path $PidFile) {
-        $pid = Get-Content $PidFile -Raw
+        $procId = [int](Get-Content $PidFile -Raw)
         try {
-            Stop-Process -Id $pid -Force -ErrorAction Stop
-            Write-Host "Stopped service (PID $pid)." -ForegroundColor Yellow
+            Stop-Process -Id $procId -Force -ErrorAction Stop
+            Write-Host "Stopped service (PID $procId)." -ForegroundColor Yellow
         } catch {
-            Write-Host "Process $pid not found (already stopped?)." -ForegroundColor Yellow
+            Write-Host "Process $procId not found (already stopped?)." -ForegroundColor Yellow
         }
         Remove-Item $PidFile -Force
     } else {
@@ -85,7 +86,8 @@ function Show-Status {
     if (Test-ServiceRunning) {
         $data = Invoke-RestMethod -Uri "$ServiceUrl/v1/health"
         Write-Host "Service:  ONLINE" -ForegroundColor Green
-        Write-Host "Device:   $($data.cuda_device ?? 'CPU')"
+        $device = if ($data.cuda_device) { $data.cuda_device } else { "CPU" }
+        Write-Host "Device:   $device"
         Write-Host "URL:      $ServiceUrl"
     } else {
         Write-Host "Service:  OFFLINE" -ForegroundColor Red
@@ -94,8 +96,30 @@ function Show-Status {
 }
 
 function Open-UI {
-    $indexHtml = Join-Path $FrontendDir "index.html"
-    Start-Process $indexHtml
+    $node = Get-Command node -ErrorAction SilentlyContinue
+    if (-not $node) {
+        Write-Host "Node.js not found. Install it with: winget install OpenJS.NodeJS.LTS" -ForegroundColor Red
+        return
+    }
+    Write-Host "Starting Vite dev server at http://localhost:5173 …" -ForegroundColor Cyan
+    Start-Process -FilePath $node.Source `
+        -ArgumentList (Join-Path $FrontendDir "node_modules\.bin\vite") `
+        -WorkingDirectory $FrontendDir `
+        -WindowStyle Normal
+    Start-Sleep -Seconds 2
+    Start-Process "http://localhost:5173"
+}
+
+function Invoke-UIBuild {
+    $node = Get-Command node -ErrorAction SilentlyContinue
+    if (-not $node) {
+        Write-Host "Node.js not found. Install it with: winget install OpenJS.NodeJS.LTS" -ForegroundColor Red
+        return
+    }
+    Write-Host "Building React frontend…" -ForegroundColor Cyan
+    & $node.Source (Join-Path $FrontendDir "node_modules\.bin\vite") build `
+        --config (Join-Path $FrontendDir "vite.config.js")
+    Write-Host "Built to frontend/dist/" -ForegroundColor Green
 }
 
 # ── Dispatch ──────────────────────────────────────────────────────────────────
@@ -105,6 +129,7 @@ switch ($cmd) {
     "stop"   { Stop-Service }
     "status" { Show-Status }
     "ui"     { Open-UI }
+    "build"  { Invoke-UIBuild }
     default  {
         if (-not (Test-Path $RustBin)) {
             Write-Host "Rust binary not found. Build it with:" -ForegroundColor Red
