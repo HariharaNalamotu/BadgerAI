@@ -717,8 +717,29 @@ export default function App() {
                   Clear
                 </button>
               </div>
-              {results.map(r => (
-                <ResultCard key={r.id} result={r} showTrace={isTrace} />
+              {Object.entries(
+                results.reduce((acc, r) => {
+                  (acc[r.source] = acc[r.source] || []).push(r);
+                  return acc;
+                }, {})
+              ).map(([source, group]) => (
+                <div key={source} style={{ marginBottom: 24 }}>
+                  <div style={{
+                    fontSize: 11, fontWeight: 700, color: C.accent,
+                    textTransform: "uppercase", letterSpacing: "0.08em",
+                    padding: "5px 0 6px", marginBottom: 10,
+                    borderBottom: `1px solid ${C.accentBorder}`,
+                    display: "flex", alignItems: "center", gap: 8,
+                  }}>
+                    <span>{source}</span>
+                    <span style={{ color: C.muted, fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>
+                      {group.length} result{group.length !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                  {group.map(r => (
+                    <ResultCard key={r.id} result={r} showTrace={isTrace} />
+                  ))}
+                </div>
               ))}
             </div>
           )}

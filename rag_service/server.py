@@ -4,9 +4,12 @@ import logging
 import os
 import subprocess
 import sys
+import tempfile
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import torch
 from fastapi import FastAPI, HTTPException
@@ -180,23 +183,108 @@ def _find_binary() -> Path:
     )
 
 
+def _is_single_page(url: str) -> bool:
+    """
+    True when a URL points to a specific deep page (.com/a/b or deeper).
+    False for site roots or one-segment bases (.com/ or .com/docs).
+    """
+    try:
+        path = urlparse(url).path
+        segments = [s for s in path.split("/") if s]
+        return len(segments) >= 2
+    except Exception:
+        return False
+
+
+def _extract_file_text(path: str) -> str:
+    """Extract plain text from PDF, DOCX, HTML, MD, or TXT files."""
+    p = Path(path).expanduser().resolve()
+    if not p.exists():
+        raise FileNotFoundError(f"File not found: {p}")
+    suffix = p.suffix.lower()
+
+    if suffix == ".pdf":
+        import pdfplumber
+        pages: list[str] = []
+        with pdfplumber.open(p) as pdf:
+            for page in pdf.pages:
+                text = page.extract_text()
+                if text and text.strip():
+                    pages.append(text.strip())
+        return "\n\n".join(pages)
+
+    if suffix == ".docx":
+        from docx import Document  # python-docx
+        doc = Document(str(p))
+        paras = [para.text for para in doc.paragraphs if para.text.strip()]
+        return "\n\n".join(paras)
+
+    if suffix in (".html", ".htm"):
+        from bs4 import BeautifulSoup
+        html = p.read_text(encoding="utf-8", errors="ignore")
+        soup = BeautifulSoup(html, "html.parser")
+        for tag in soup(["script", "style", "nav", "footer"]):
+            tag.decompose()
+        return soup.get_text(separator="\n\n")
+
+    # MD, TXT, RST, and everything else — read as-is
+    return p.read_text(encoding="utf-8", errors="ignore")
+
+
+def _run_local_file_index(binary: str, lib_name: str, path: str) -> None:
+    """Extract text from a local file and index it via plshelp. Runs in a thread."""
+    tmp_path: Path | None = None
+    try:
+        text = _extract_file_text(path)
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".txt", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(text)
+            tmp_path = Path(f.name)
+        subprocess.run(
+            [binary, "index", lib_name, "--file", str(tmp_path)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        logger.info("Indexed local file '%s' as library '%s'", path, lib_name)
+    except Exception as exc:
+        logger.error("Local file indexing failed for '%s': %s", lib_name, exc)
+    finally:
+        if tmp_path and tmp_path.exists():
+            tmp_path.unlink(missing_ok=True)
+
+
 @app.post("/v1/index", status_code=202)
 def index_library(req: IndexRequest):
-    """Start indexing a URL in the background via plshelp add."""
+    """
+    Start indexing in the background.
+
+    • HTTP/HTTPS URL  → plshelp add (auto-detects website vs single page)
+    • Local file path → extract text (PDF/DOCX/HTML/MD/TXT), then plshelp index --file
+    """
     lib_name = req.library_name.strip()
     url = req.url.strip()
     if not lib_name or not url:
         raise HTTPException(400, "library_name and url are required")
 
     try:
-        binary = _find_binary()
+        binary = str(_find_binary())
     except FileNotFoundError as e:
         raise HTTPException(500, str(e))
 
-    subprocess.Popen(
-        [str(binary), "add", lib_name, url],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    logger.info("Started indexing '%s' from %s", lib_name, url)
+    if url.startswith(("http://", "https://")):
+        args = [binary, "add", lib_name, url]
+        if _is_single_page(url):
+            args.append("--single")
+            logger.info("Indexing single page '%s' from %s", lib_name, url)
+        else:
+            logger.info("Indexing full site '%s' from %s", lib_name, url)
+        subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    else:
+        logger.info("Indexing local file '%s' as library '%s'", url, lib_name)
+        t = threading.Thread(
+            target=_run_local_file_index, args=(binary, lib_name, url), daemon=True
+        )
+        t.start()
+
     return {"status": "started", "library_name": lib_name, "url": url}
