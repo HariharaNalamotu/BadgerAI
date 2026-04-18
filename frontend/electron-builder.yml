@@ -1,0 +1,33 @@
+appId: com.badgerai.gethelp
+productName: BadgerAI
+copyright: Copyright © 2025
+
+directories:
+  output: dist-electron
+
+win:
+  target:
+    - target: nsis
+      arch: x64
+    - target: portable
+      arch: x64
+  requestedExecutionLevel: asUser
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  shortcutName: BadgerAI
+
+files:
+  - dist/**
+  - electron/**
+  - package.json
+
+extraResources:
+  - from: ../rag_service
+    to: rag_service
+    filter:
+      - "**/*.py"
+      - "!**/__pycache__/**"
+      - "!**/*.pyc"

@@ -1,5 +1,6 @@
 """FastAPI server exposing embedding, reranking, and full search endpoints."""
 from __future__ import annotations
+import json
 import logging
 import os
 import subprocess
@@ -11,9 +12,11 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+import httpx
 import torch
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from .config import get_db_path, get_service_settings
@@ -92,6 +95,13 @@ class SearchRequest(BaseModel):
 class IndexRequest(BaseModel):
     library_name: str
     url: str
+
+
+class AskRequest(BaseModel):
+    query: str
+    library: str | None = None
+    top_k: int = 6
+    mode: str = "hybrid"
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
@@ -288,3 +298,83 @@ def index_library(req: IndexRequest):
         t.start()
 
     return {"status": "started", "library_name": lib_name, "url": url}
+
+
+_OLLAMA_MODEL = "llama3.1:8b"
+_OLLAMA_URL   = "http://localhost:11434/api/chat"
+
+_SYSTEM_PROMPT = (
+    "You are a helpful technical assistant. Answer the user's question using ONLY "
+    "the provided documentation context. Be concise and accurate. If the context "
+    "doesn't contain enough information to fully answer, say so. "
+    "Cite source numbers like [1], [2] when referencing specific passages."
+)
+
+
+@app.post("/v1/ask")
+async def ask(req: AskRequest):
+    pipeline: SearchPipeline = _state["pipeline"]
+    results = pipeline.search(
+        query=req.query,
+        library=req.library,
+        mode=req.mode,
+        top_k=req.top_k,
+        rerank=True,
+    )
+
+    context_parts = []
+    for i, r in enumerate(results, 1):
+        source  = r.get("library_name", "unknown")
+        url     = r.get("source_url", "")
+        content = r.get("content", "")
+        context_parts.append(f"[{i}] Source: {source}\nURL: {url}\n{content}")
+
+    context = "\n\n---\n\n".join(context_parts) if context_parts else "No relevant documentation found."
+
+    messages = [
+        {"role": "system", "content": f"{_SYSTEM_PROMPT}\n\nDocumentation context:\n\n{context}"},
+        {"role": "user",   "content": req.query},
+    ]
+
+    sources = [
+        {
+            "library": r.get("library_name"),
+            "url":     r.get("source_url"),
+            "content": r.get("content", "")[:300],
+        }
+        for r in results
+    ]
+
+    async def generate():
+        yield f"data: {json.dumps({'type': 'sources', 'sources': sources})}\n\n"
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                async with client.stream(
+                    "POST",
+                    _OLLAMA_URL,
+                    json={"model": _OLLAMA_MODEL, "messages": messages, "stream": True},
+                ) as resp:
+                    async for line in resp.aiter_lines():
+                        if not line:
+                            continue
+                        try:
+                            chunk = json.loads(line)
+                            token = chunk.get("message", {}).get("content", "")
+                            if token:
+                                yield f"data: {json.dumps({'type': 'token', 'token': token})}\n\n"
+                            if chunk.get("done"):
+                                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                                return
+                        except json.JSONDecodeError:
+                            continue
+        except httpx.ConnectError:
+            msg = (
+                f"Ollama is not running. "
+                f"Install: winget install Ollama.Ollama  "
+                f"then run: ollama pull {_OLLAMA_MODEL}"
+            )
+            yield f"data: {json.dumps({'type': 'error', 'message': msg})}\n\n"
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")

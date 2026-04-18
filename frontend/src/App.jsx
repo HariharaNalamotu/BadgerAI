@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 const API = "http://127.0.0.1:8765";
 
@@ -283,6 +283,94 @@ function ConvItem({ conv, active, onClick, onRename, onDelete }) {
   );
 }
 
+function AnswerPanel({ answer, sources, isAsking, error, onClear }) {
+  const [srcOpen, setSrcOpen] = useState(false);
+  const endRef = useRef(null);
+
+  useEffect(() => {
+    if (endRef.current) endRef.current.scrollIntoView({ behavior: "smooth" });
+  }, [answer]);
+
+  return (
+    <div style={{ maxWidth: 760, margin: "0 auto" }}>
+      <style>{`@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }`}</style>
+
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12,
+                    padding: "20px 22px", marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+          <span style={{ width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
+                         background: isAsking ? C.warn : error ? C.danger : C.success,
+                         display: "inline-block" }} />
+          <span style={{ fontSize: 11, fontWeight: 700, color: C.mid,
+                         letterSpacing: "0.08em", textTransform: "uppercase" }}>
+            {isAsking ? "generating…" : error ? "error" : "answer"}
+          </span>
+          {!isAsking && (
+            <button onClick={onClear}
+              style={{ marginLeft: "auto", padding: "3px 10px", borderRadius: 6,
+                       border: "1px solid rgba(255,255,255,0.09)",
+                       background: "transparent", color: "#777",
+                       fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>
+              Clear
+            </button>
+          )}
+        </div>
+
+        {error ? (
+          <div style={{ fontSize: 13, color: C.danger, lineHeight: 1.7 }}>{error}</div>
+        ) : (
+          <div style={{ fontSize: 14, color: C.text, lineHeight: 1.8,
+                        whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+            {answer}
+            {isAsking && (
+              <span style={{ display: "inline-block", width: 2, height: "1em",
+                             background: C.accent, marginLeft: 2,
+                             verticalAlign: "text-bottom",
+                             animation: "blink 1s step-start infinite" }} />
+            )}
+            <div ref={endRef} />
+          </div>
+        )}
+      </div>
+
+      {sources.length > 0 && (
+        <div>
+          <button onClick={() => setSrcOpen(!srcOpen)}
+            style={{ display: "flex", alignItems: "center", gap: 6,
+                     padding: "6px 12px", borderRadius: 8, marginBottom: 10,
+                     border: `1px solid ${srcOpen ? C.accentBorder : C.border}`,
+                     background: srcOpen ? C.accentDim : "transparent",
+                     color: srcOpen ? C.accent : C.mid,
+                     fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+            <span>{srcOpen ? "▾" : "▸"}</span>
+            <span>{sources.length} source{sources.length !== 1 ? "s" : ""} retrieved</span>
+          </button>
+          {srcOpen && sources.map((s, i) => (
+            <div key={i} style={{ background: C.card, border: `1px solid ${C.border}`,
+                                   borderRadius: 8, padding: "10px 14px", marginBottom: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: C.accent,
+                               background: C.accentDim, border: `1px solid ${C.accentBorder}`,
+                               borderRadius: 4, padding: "1px 6px" }}>
+                  [{i + 1}]
+                </span>
+                <Tag>{s.library}</Tag>
+                <span style={{ fontSize: 11, color: C.muted, overflow: "hidden",
+                               textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 280 }}>
+                  {s.url}
+                </span>
+              </div>
+              <p style={{ margin: 0, fontSize: 12, color: C.mid, lineHeight: 1.6 }}>
+                {s.content}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ResultCard({ result, showTrace }) {
   const [traceOpen, setTraceOpen] = useState(false);
 
@@ -370,18 +458,22 @@ function ResultCard({ result, showTrace }) {
 }
 
 export default function App() {
-  const [websites,    setWebsites]    = useState([]);
-  const [docs,        setDocs]        = useState([]);
-  const [convs,       setConvs]       = useState(INIT_CONVS);
-  const [activeConv,  setActiveConv]  = useState("c1");
-  const [modal,       setModal]       = useState(null);
-  const [query,       setQuery]       = useState("");
-  const [mode,        setMode]        = useState("hybrid");
-  const [results,     setResults]     = useState(null);
-  const [loading,     setLoading]     = useState(false);
-  const [isTrace,     setIsTrace]     = useState(false);
-  const [serviceOk,   setServiceOk]   = useState(null);
-  const [searchError, setSearchError] = useState(null);
+  const [websites,      setWebsites]      = useState([]);
+  const [docs,          setDocs]          = useState([]);
+  const [convs,         setConvs]         = useState(INIT_CONVS);
+  const [activeConv,    setActiveConv]    = useState("c1");
+  const [modal,         setModal]         = useState(null);
+  const [query,         setQuery]         = useState("");
+  const [mode,          setMode]          = useState("hybrid");
+  const [results,       setResults]       = useState(null);
+  const [loading,       setLoading]       = useState(false);
+  const [isTrace,       setIsTrace]       = useState(false);
+  const [serviceOk,     setServiceOk]     = useState(null);
+  const [searchError,   setSearchError]   = useState(null);
+  const [answer,        setAnswer]        = useState(null);
+  const [answerSources, setAnswerSources] = useState([]);
+  const [answerError,   setAnswerError]   = useState(null);
+  const [isAsking,      setIsAsking]      = useState(false);
   const pollRefs = useRef({});
 
   const currentConv = convs.find(c => c.id === activeConv);
@@ -420,13 +512,20 @@ export default function App() {
   }, []);
 
   // ── Conversations ─────────────────────────────────────────────────────────
+  const clearAll = () => {
+    setResults(null);
+    setSearchError(null);
+    setAnswer(null);
+    setAnswerSources([]);
+    setAnswerError(null);
+  };
+
   const newConv = () => {
     const id = "c" + mkId();
     setConvs(p => [{ id, title:"New conversation" }, ...p]);
     setActiveConv(id);
-    setResults(null);
+    clearAll();
     setQuery("");
-    setSearchError(null);
   };
 
   // ── Add source → POST /v1/index → poll ──────────────────────────────────
@@ -474,6 +573,9 @@ export default function App() {
   // ── Search → POST /v1/search ──────────────────────────────────────────────
   const doSearch = async (trace = false) => {
     if (!query.trim()) return;
+    setAnswer(null);
+    setAnswerSources([]);
+    setAnswerError(null);
     setIsTrace(trace);
     setLoading(true);
     setResults(null);
@@ -511,6 +613,55 @@ export default function App() {
       setResults([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ── Ask → POST /v1/ask (SSE streaming) ─────────────────────────────────────
+  const doAsk = async () => {
+    if (!query.trim()) return;
+    setResults(null);
+    setSearchError(null);
+    setAnswer("");
+    setAnswerSources([]);
+    setAnswerError(null);
+    setIsAsking(true);
+
+    try {
+      const resp = await fetch(`${API}/v1/ask`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: query.trim(), mode, top_k: 6 }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+        throw new Error(err.detail || resp.statusText);
+      }
+
+      const reader  = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let   buffer  = "";
+
+      outer: while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const ev = JSON.parse(line.slice(6));
+            if (ev.type === "sources")       setAnswerSources(ev.sources);
+            else if (ev.type === "token")    setAnswer(p => p + ev.token);
+            else if (ev.type === "error")    { setAnswerError(ev.message); break outer; }
+            else if (ev.type === "done")     break outer;
+          } catch { /* skip malformed lines */ }
+        }
+      }
+    } catch (e) {
+      setAnswerError(e.message || "Failed to get answer");
+    } finally {
+      setIsAsking(false);
     }
   };
 
@@ -573,7 +724,7 @@ export default function App() {
                 key={conv.id}
                 conv={conv}
                 active={activeConv === conv.id}
-                onClick={() => { setActiveConv(conv.id); setResults(null); setQuery(""); setSearchError(null); }}
+                onClick={() => { setActiveConv(conv.id); clearAll(); setQuery(""); }}
                 onRename={t => setConvs(p => p.map(c => c.id===conv.id ? {...c, title:t} : c))}
                 onDelete={() => {
                   setConvs(p => p.filter(c => c.id !== conv.id));
@@ -646,8 +797,8 @@ export default function App() {
                             letterSpacing:"-0.02em" }}>
                 Search your docs
               </div>
-              <div style={{ fontSize:13, color:C.muted, maxWidth:360, lineHeight:1.65, marginBottom:24 }}>
-                plshelp indexes your websites and documentation locally. Ask anything — results come from your own machine, not the internet.
+              <div style={{ fontSize:13, color:C.muted, maxWidth:380, lineHeight:1.65, marginBottom:24 }}>
+                Search returns relevant chunks. <span style={{ color:"#a78bfa" }}>Ask AI</span> generates a full answer using your docs as context — powered by a local LLM, no data leaves your machine.
               </div>
               <div style={{ display:"flex", flexWrap:"wrap", gap:8, justifyContent:"center", maxWidth:480 }}>
                 {examples.map(ex => (
@@ -689,6 +840,16 @@ export default function App() {
             </div>
           )}
 
+          {(answer !== null || isAsking) && (
+            <AnswerPanel
+              answer={answer || ""}
+              sources={answerSources}
+              isAsking={isAsking}
+              error={answerError}
+              onClear={clearAll}
+            />
+          )}
+
           {results && !loading && (
             <div style={{ maxWidth:760, margin:"0 auto" }}>
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
@@ -709,7 +870,7 @@ export default function App() {
                     </>
                   )}
                 </div>
-                <button onClick={() => { setResults(null); setSearchError(null); }}
+                <button onClick={clearAll}
                   style={{ padding:"3px 10px", borderRadius:6,
                            border:"1px solid rgba(255,255,255,0.09)",
                            background:"transparent", color:"#777",
@@ -811,10 +972,23 @@ export default function App() {
                        fontFamily:"inherit", flexShrink:0 }}>
               Trace
             </button>
+
+            <button
+              onClick={doAsk}
+              disabled={!query.trim() || isAsking}
+              title="Get a full AI-generated answer using your docs as context"
+              style={{ padding:"10px 16px", borderRadius:10,
+                       border:`1px solid ${query.trim() ? "rgba(139,92,246,0.5)" : C.border}`,
+                       background:query.trim() ? "rgba(139,92,246,0.12)" : "transparent",
+                       color:query.trim() ? "#a78bfa" : C.muted,
+                       fontSize:13, fontWeight:700, cursor:query.trim() ? "pointer" : "default",
+                       fontFamily:"inherit", flexShrink:0 }}>
+              {isAsking ? "…" : "Ask AI"}
+            </button>
           </div>
 
           <div style={{ marginTop:8, fontSize:11, color:C.muted, textAlign:"center" }}>
-            Enter to search · Trace reveals score breakdown per result
+            Search returns chunks · Ask AI generates a full answer from your docs
           </div>
         </div>
       </div>
