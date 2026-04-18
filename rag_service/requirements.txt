@@ -1,0 +1,15 @@
+# Core service
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+
+# ML — PyTorch 2.6+ required for Blackwell (sm_120) compile support
+# Install CUDA 12.4 build: pip install torch --index-url https://download.pytorch.org/whl/cu124
+torch>=2.6.0
+sentence-transformers>=3.3.0
+FlagEmbedding>=1.2.0
+numpy>=1.26.0
+
+# GPU optimisations
+bitsandbytes>=0.44.0       # INT8/NF4 quantisation for NV-Embed-v2
+flash-attn>=2.7.0          # Flash Attention 2 (install last — requires CUDA headers)
+accelerate>=1.0.0          # Required by bitsandbytes + quantised HF models

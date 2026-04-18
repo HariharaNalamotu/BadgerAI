@@ -1,0 +1,33 @@
+{
+  "name": "@generalinteraction/plshelp",
+  "version": "0.1.12",
+  "description": "Local-first documentation search for agents and humans",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HariharPrasadd/plshelp.git"
+  },
+  "homepage": "https://plshelp.run",
+  "bin": {
+    "plshelp": "./run.js"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "optionalDependencies": {
+    "@generalinteraction/plshelp-linux-x64": "0.1.12",
+    "@generalinteraction/plshelp-darwin-arm64": "0.1.12",
+    "@generalinteraction/plshelp-win32-x64": "0.1.12"
+  },
+  "files": [
+    "run.js",
+    "install.js"
+  ],
+  "engines": {
+    "node": ">=16"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

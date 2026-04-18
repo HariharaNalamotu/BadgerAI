@@ -1,0 +1,29 @@
+# Rust build artifacts
+/target/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+*.egg-info/
+
+# Models cache (downloaded at runtime)
+models/
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Logs / temp
+*.log
+*.pid
+
+# Wrangler dev state
+.wrangler/state/
+.wrangler/cache/
+
+# OS
+.DS_Store
+Thumbs.db
